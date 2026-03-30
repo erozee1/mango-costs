@@ -6,12 +6,12 @@ SESSION_FILE="$HOME/.openclaw/agents/main/sessions/d2afa572-efd6-4ca4-9c6e-42ddb
 
 case "$1" in
   show|"")
-    if [ -d "/Applications/MangoCosts.app" ]; then
-      open -a /Applications/MangoCosts.app
-    elif [ -d "$HOME/Projects/mango-costs/MangoCosts.app" ]; then
-      open "$HOME/Projects/mango-costs/MangoCosts.app"
+    APP_BIN="/Applications/MangoCosts.app/Contents/MacOS/MangoCosts"
+    if [ -x "$APP_BIN" ]; then
+      nohup "$APP_BIN" > /dev/null 2>&1 &
     else
-      echo "MangoCosts not found. Run: cd ~/Projects/mango-costs && bash install.sh"
+      echo "MangoCosts not found at $APP_BIN"
+      echo "Run: cd ~/Projects/mango-costs && xcodebuild -scheme MangoCosts -configuration Debug build"
     fi
     ;;
   status)
