@@ -28,21 +28,33 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(width: 320, height: 242)
+        .frame(width: 320, height: 250)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    // MARK: Header band
-    // The window is .titled + titlebarAppearsTransparent + fullSizeContentView,
-    // so the traffic light buttons float over the top-left of this header band.
-    // We reserve ~76pt on the left to clear them.
+    // MARK: Header band — custom chrome, no system traffic lights
 
     private var headerBand: some View {
-        HStack(alignment: .center, spacing: 0) {
-            // Clear space for traffic light buttons (close ≈13, minimize ≈33, maximize ≈53 + margin)
-            Color.clear.frame(width: 76)
+        HStack(alignment: .center, spacing: 8) {
+            // Close button (red circle)
+            Button(action: { NSApp.keyWindow?.close() }) {
+                Circle()
+                    .fill(Color(hex: "FF5F57"))
+                    .frame(width: 12, height: 12)
+                    .overlay(
+                        Image(systemName: "xmark")
+                            .font(.system(size: 6, weight: .bold))
+                            .foregroundStyle(Color.black.opacity(0.5))
+                    )
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 12)
 
-            Text("🥭 Mango Costs")
+            // Big mango emoji
+            Text("🥭")
+                .font(.system(size: 22))
+
+            Text("Mango Costs")
                 .font(.system(.subheadline, design: .rounded).weight(.semibold))
 
             Spacer()
@@ -56,7 +68,7 @@ struct ContentView: View {
                     .padding(.trailing, 12)
             }
         }
-        .frame(height: 36)
+        .frame(height: 44)
     }
 
     // MARK: Body

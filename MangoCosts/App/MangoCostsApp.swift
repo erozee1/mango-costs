@@ -85,21 +85,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 final class FloatingPanel: NSPanel {
     init(costModel: CostModel) {
+        // Use borderless panel — we draw our own header in SwiftUI for full layout control
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 242),
-            styleMask: [.nonactivatingPanel, .fullSizeContentView, .titled, .closable],
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 250),
+            styleMask: [.nonactivatingPanel, .fullSizeContentView, .borderless],
             backing: .buffered,
             defer: false
         )
         level = .floating
         isFloatingPanel = true
         hidesOnDeactivate = false
-        titlebarAppearsTransparent = true
-        titleVisibility = .hidden
         isMovableByWindowBackground = true
         backgroundColor = .clear
         isOpaque = false
         hasShadow = true
+
+
 
         let contentView = ContentView(costModel: costModel)
         let hosting = NSHostingView(rootView: contentView)
@@ -112,7 +113,7 @@ final class FloatingPanel: NSPanel {
         guard let screen = NSScreen.main else { return }
         let sf = screen.visibleFrame
         let w: CGFloat = 320
-        let h: CGFloat = 242
+        let h: CGFloat = 250
         setFrameOrigin(NSPoint(x: sf.maxX - w - 20, y: sf.maxY - h - 20))
     }
 }
