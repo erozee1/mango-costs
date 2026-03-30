@@ -5,8 +5,14 @@
 SESSION_FILE="$HOME/.openclaw/agents/main/sessions/d2afa572-efd6-4ca4-9c6e-42ddb9051b8c.jsonl"
 
 case "$1" in
-  show)
-    open -a MangoCosts 2>/dev/null || echo "MangoCosts app not installed. Open ~/Projects/mango-costs/MangoCosts.xcodeproj in Xcode and build first."
+  show|"")
+    if [ -d "/Applications/MangoCosts.app" ]; then
+      open -a /Applications/MangoCosts.app
+    elif [ -d "$HOME/Projects/mango-costs/MangoCosts.app" ]; then
+      open "$HOME/Projects/mango-costs/MangoCosts.app"
+    else
+      echo "MangoCosts not found. Run: cd ~/Projects/mango-costs && bash install.sh"
+    fi
     ;;
   status)
     if [ ! -f "$SESSION_FILE" ]; then

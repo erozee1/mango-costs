@@ -8,12 +8,12 @@ private let kMaxContextTokens = 200_000
 
 struct ContentView: View {
     @ObservedObject var costModel: CostModel
+    var onClose: (() -> Void)?
 
     var body: some View {
         ZStack {
             VisualEffectView()
                 .ignoresSafeArea()
-                .cornerRadius(12)
 
             VStack(spacing: 0) {
                 headerBand
@@ -29,7 +29,7 @@ struct ContentView: View {
             }
         }
         .frame(width: 320, height: 236)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .ignoresSafeArea()
     }
 
     // MARK: Header band — custom chrome, no system traffic lights
@@ -37,7 +37,7 @@ struct ContentView: View {
     private var headerBand: some View {
         HStack(alignment: .center, spacing: 8) {
             // Close button (red circle)
-            Button(action: { NSApp.keyWindow?.close() }) {
+            Button(action: { onClose?() }) {
                 Circle()
                     .fill(Color(hex: "FF5F57"))
                     .frame(width: 12, height: 12)

@@ -102,11 +102,18 @@ final class FloatingPanel: NSPanel {
 
 
 
-        let contentView = ContentView(costModel: costModel)
+        let contentView = ContentView(costModel: costModel, onClose: { [weak self] in
+            self?.orderOut(nil)
+        })
         let hosting = NSHostingView(rootView: contentView)
         hosting.frame = self.contentView!.bounds
         hosting.autoresizingMask = [.width, .height]
         self.contentView?.addSubview(hosting)
+
+        // Rounded corners at window level
+        self.contentView?.wantsLayer = true
+        self.contentView?.layer?.cornerRadius = 12
+        self.contentView?.layer?.masksToBounds = true
     }
 
     func positionTopRight() {
