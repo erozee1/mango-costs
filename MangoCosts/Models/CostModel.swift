@@ -154,8 +154,10 @@ final class CostModel: ObservableObject {
     }
 
     var sessionDuration: String {
-        guard let startStr = costData?.sessionStart,
-              let startDate = ISO8601DateFormatter().date(from: startStr) else { return "—" }
+        guard let startStr = costData?.sessionStart else { return "—" }
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let startDate = fmt.date(from: startStr) else { return "—" }
         let elapsed = Int(Date().timeIntervalSince(startDate))
         let h = elapsed / 3600
         let m = (elapsed % 3600) / 60

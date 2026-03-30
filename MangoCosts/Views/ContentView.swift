@@ -28,7 +28,7 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(width: 320, height: 250)
+        .frame(width: 320, height: 236)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
@@ -68,7 +68,7 @@ struct ContentView: View {
                     .padding(.trailing, 12)
             }
         }
-        .frame(height: 44)
+        .frame(height: 40)
     }
 
     // MARK: Body
@@ -93,7 +93,7 @@ struct ContentView: View {
                 .padding(.top, 8)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 14)
+        .padding(.bottom, 10)
     }
 
     private func costSection(data: CostData) -> some View {

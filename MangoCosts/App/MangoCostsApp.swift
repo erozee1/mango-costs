@@ -87,7 +87,7 @@ final class FloatingPanel: NSPanel {
     init(costModel: CostModel) {
         // Use borderless panel — we draw our own header in SwiftUI for full layout control
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 250),
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 236),
             styleMask: [.nonactivatingPanel, .fullSizeContentView, .borderless],
             backing: .buffered,
             defer: false
@@ -113,7 +113,7 @@ final class FloatingPanel: NSPanel {
         guard let screen = NSScreen.main else { return }
         let sf = screen.visibleFrame
         let w: CGFloat = 320
-        let h: CGFloat = 250
+        let h: CGFloat = 236
         setFrameOrigin(NSPoint(x: sf.maxX - w - 20, y: sf.maxY - h - 20))
     }
 }
