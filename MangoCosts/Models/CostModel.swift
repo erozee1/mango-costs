@@ -1,22 +1,38 @@
 import Foundation
 import Combine
 
+// MARK: - JSONL Parsing
+
+private struct SessionEntry: Decodable {
+    let type: String?
+    let timestamp: String?
+    let message: SessionMessage?
+}
+
+private struct SessionMessage: Decodable {
+    let role: String?
+    let model: String?
+    let usage: SessionUsage?
+}
+
+private struct SessionUsage: Decodable {
+    let input: Int?
+    let output: Int?
+    let cost: SessionCost?
+}
+
+private struct SessionCost: Decodable {
+    let total: Double?
+}
+
 // MARK: - Data Model
 
-struct CostData: Codable, Equatable {
+struct CostData: Equatable {
     let sessionCost: Double
     let inputTokens: Int
     let outputTokens: Int
     let model: String
     let sessionStart: String
-
-    enum CodingKeys: String, CodingKey {
-        case sessionCost   = "session_cost"
-        case inputTokens   = "input_tokens"
-        case outputTokens  = "output_tokens"
-        case model
-        case sessionStart  = "session_start"
-    }
 }
 
 // MARK: - RAG Status
@@ -39,12 +55,15 @@ final class CostModel: ObservableObject {
     // Notification checkpoints
     static let notificationCheckpoints: [Double] = [0.10, 0.50, 1.00]
 
+    // JSONL session file path
+    static let sessionFilePath = "/.openclaw/agents/main/sessions/d2afa572-efd6-4ca4-9c6e-42ddb9051b8c.jsonl"
+
     private var timer: Timer?
-    private let costsURL: URL
+    private let sessionURL: URL
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        costsURL = home.appendingPathComponent(".openclaw/costs.json")
+        sessionURL = home.appendingPathComponent(Self.sessionFilePath.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
         loadData()
         startPolling()
     }
@@ -53,8 +72,54 @@ final class CostModel: ObservableObject {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
             do {
-                let data = try Data(contentsOf: self.costsURL)
-                let decoded = try JSONDecoder().decode(CostData.self, from: data)
+                let raw = try String(contentsOf: self.sessionURL, encoding: .utf8)
+                let lines = raw.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+
+                var totalCost: Double = 0
+                var totalInput: Int = 0
+                var totalOutput: Int = 0
+                var model: String = "claude-sonnet-4-6"
+                var sessionStart: String = ""
+                var foundModel = false
+
+                let decoder = JSONDecoder()
+
+                for line in lines {
+                    guard let lineData = line.data(using: .utf8),
+                          let entry = try? decoder.decode(SessionEntry.self, from: lineData),
+                          entry.type == "message",
+                          entry.message?.role == "assistant"
+                    else { continue }
+
+                    if let ts = entry.timestamp, sessionStart.isEmpty {
+                        sessionStart = ts
+                    }
+
+                    if !foundModel, let m = entry.message?.model {
+                        model = m
+                        foundModel = true
+                    }
+
+                    if let usage = entry.message?.usage {
+                        totalInput += usage.input ?? 0
+                        totalOutput += usage.output ?? 0
+                        totalCost += usage.cost?.total ?? 0
+                    }
+                }
+
+                guard !sessionStart.isEmpty else {
+                    throw NSError(domain: "MangoCosts", code: 1,
+                                  userInfo: [NSLocalizedDescriptionKey: "No assistant messages found in session file"])
+                }
+
+                let decoded = CostData(
+                    sessionCost: totalCost,
+                    inputTokens: totalInput,
+                    outputTokens: totalOutput,
+                    model: model,
+                    sessionStart: sessionStart
+                )
+
                 DispatchQueue.main.async {
                     let prev = self.costData?.sessionCost
                     self.costData = decoded

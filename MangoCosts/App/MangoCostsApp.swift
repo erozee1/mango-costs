@@ -86,7 +86,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 final class FloatingPanel: NSPanel {
     init(costModel: CostModel) {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 210),
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 242),
             styleMask: [.nonactivatingPanel, .fullSizeContentView, .titled, .closable],
             backing: .buffered,
             defer: false
@@ -112,7 +112,7 @@ final class FloatingPanel: NSPanel {
         guard let screen = NSScreen.main else { return }
         let sf = screen.visibleFrame
         let w: CGFloat = 320
-        let h: CGFloat = 210
+        let h: CGFloat = 242
         setFrameOrigin(NSPoint(x: sf.maxX - w - 20, y: sf.maxY - h - 20))
     }
 }
