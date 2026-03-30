@@ -1,0 +1,77 @@
+#!/bin/bash
+# mango-costs CLI companion
+# Usage: mango-costs [show|status|update]
+
+COSTS_FILE="$HOME/.openclaw/costs.json"
+
+case "$1" in
+  show)
+    open -a MangoCosts 2>/dev/null || echo "MangoCosts app not installed. Open ~/Projects/mango-costs/MangoCosts.xcodeproj in Xcode and build first."
+    ;;
+  status)
+    if [ ! -f "$COSTS_FILE" ]; then
+      echo "❌ No costs.json found at $COSTS_FILE"
+      exit 1
+    fi
+    echo "🥭 Mango Costs"
+    echo "──────────────────────────"
+    cat "$COSTS_FILE" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+cost = d.get('session_cost', 0)
+rag = '🟢' if cost < 0.10 else ('🟡' if cost < 0.50 else '🔴')
+print(f'  Cost:    {rag} \${cost:.4f}')
+print(f'  Input:   {d.get(\"input_tokens\", 0):,} tokens')
+print(f'  Output:  {d.get(\"output_tokens\", 0):,} tokens')
+print(f'  Model:   {d.get(\"model\", \"unknown\")}')
+print(f'  Started: {d.get(\"session_start\", \"unknown\")}')
+"
+    ;;
+  update)
+    shift
+    COST=""
+    INPUT=""
+    OUTPUT=""
+    MODEL=""
+    while [[ $# -gt 0 ]]; do
+      case $1 in
+        --cost) COST="$2"; shift 2 ;;
+        --input) INPUT="$2"; shift 2 ;;
+        --output) OUTPUT="$2"; shift 2 ;;
+        --model) MODEL="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    mkdir -p "$(dirname $COSTS_FILE)"
+    python3 -c "
+import json, os, sys
+from datetime import datetime, timezone
+f = '$COSTS_FILE'
+d = {}
+if os.path.exists(f):
+    with open(f) as fp:
+        try: d = json.load(fp)
+        except: pass
+if '$COST': d['session_cost'] = float('$COST')
+if '$INPUT': d['input_tokens'] = int('$INPUT')
+if '$OUTPUT': d['output_tokens'] = int('$OUTPUT')
+if '$MODEL': d['model'] = '$MODEL'
+if 'session_start' not in d:
+    d['session_start'] = datetime.now(timezone.utc).isoformat()
+with open(f, 'w') as fp:
+    json.dump(d, fp, indent=2)
+print('✅ Updated', f)
+"
+    ;;
+  *)
+    echo "Usage: mango-costs <command>"
+    echo ""
+    echo "Commands:"
+    echo "  show                          Bring MangoCosts app to front"
+    echo "  status                        Print current usage to terminal"
+    echo "  update --cost 0.05 \\"
+    echo "         --input 1000 \\"
+    echo "         --output 500 \\"
+    echo "         --model claude-sonnet-4-6   Update costs.json"
+    ;;
+esac
