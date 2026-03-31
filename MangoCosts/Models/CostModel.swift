@@ -3,26 +3,11 @@ import Combine
 
 // MARK: - sessions.json Parsing
 
-private struct SessionsFile: Decodable {
-    let sessions: [String: LiveSession]
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        sessions = try container.decode([String: LiveSession].self)
-    }
-}
-
 private struct LiveSession: Decodable {
     let sessionId: String?
     let startedAt: Double?          // unix ms
     let model: String?
     let contextTokens: Int?
-    let inputTokens: Int?
-    let outputTokens: Int?
-    let cacheRead: Int?
-    let cacheWrite: Int?
-    let estimatedCostUsd: Double?
-    let totalTokens: Int?
     let sessionFile: String?
 }
 
@@ -42,7 +27,28 @@ private struct JournalMessage: Decodable {
 private struct JournalUsage: Decodable {
     let input: Int?
     let output: Int?
+    let cacheRead: Int?
+    let cacheWrite: Int?
     let cost: JournalCost?
+
+    enum CodingKeys: String, CodingKey {
+        case input, output, cost
+        case cacheRead
+        case cache_read
+        case cacheWrite
+        case cache_write
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        input     = try c.decodeIfPresent(Int.self, forKey: .input)
+        output    = try c.decodeIfPresent(Int.self, forKey: .output)
+        cost      = try c.decodeIfPresent(JournalCost.self, forKey: .cost)
+        cacheRead  = try c.decodeIfPresent(Int.self, forKey: .cacheRead)
+                  ?? c.decodeIfPresent(Int.self, forKey: .cache_read)
+        cacheWrite = try c.decodeIfPresent(Int.self, forKey: .cacheWrite)
+                  ?? c.decodeIfPresent(Int.self, forKey: .cache_write)
+    }
 }
 
 private struct JournalCost: Decodable {
@@ -53,9 +59,10 @@ private struct JournalCost: Decodable {
 
 struct SessionData: Equatable {
     let cost: Double
-    let inputTokens: Int
+    let inputTokens: Int        // fresh input only (not cache)
     let outputTokens: Int
-    let totalTokens: Int
+    let cacheReadTokens: Int    // cache read tokens
+    let totalTokens: Int        // input + output + cacheRead + cacheWrite
     let model: String
     let startedAt: Date
     let contextTokens: Int
@@ -92,15 +99,15 @@ final class CostModel: ObservableObject {
         startPolling()
     }
 
-    // MARK: - Session loading (from sessions.json)
+    // MARK: - Session loading (sessions.json metadata + JSONL token counts)
 
     func loadSessionData() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
             do {
+                // Step 1: read sessions.json for metadata
                 let raw = try Data(contentsOf: self.sessionsJsonURL)
-                let decoder = JSONDecoder()
-                let dict = try decoder.decode([String: LiveSession].self, from: raw)
+                let dict = try JSONDecoder().decode([String: LiveSession].self, from: raw)
 
                 guard let live = dict["agent:main:main"] else {
                     throw NSError(domain: "MangoCosts", code: 1,
@@ -114,14 +121,54 @@ final class CostModel: ObservableObject {
                     startedAt = Date()
                 }
 
+                let model = live.model ?? "claude-sonnet-4-6"
+                let contextTokens = live.contextTokens ?? 200_000
+
+                guard let sessionFilePath = live.sessionFile else {
+                    throw NSError(domain: "MangoCosts", code: 2,
+                                  userInfo: [NSLocalizedDescriptionKey: "No sessionFile in sessions.json"])
+                }
+
+                // Step 2: parse JSONL for accurate token/cost data
+                let jsonlURL = URL(fileURLWithPath: sessionFilePath)
+                let jsonlRaw = try String(contentsOf: jsonlURL, encoding: .utf8)
+                let lines = jsonlRaw.components(separatedBy: "\n")
+                    .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+
+                var totalCost: Double = 0
+                var inputTokens: Int = 0
+                var outputTokens: Int = 0
+                var cacheReadTokens: Int = 0
+                var cacheWriteTokens: Int = 0
+                let decoder = JSONDecoder()
+
+                for line in lines {
+                    guard let lineData = line.data(using: .utf8),
+                          let entry = try? decoder.decode(JournalEntry.self, from: lineData)
+                    else { continue }
+
+                    if entry.type == "message", entry.message?.role == "assistant" {
+                        if let usage = entry.message?.usage {
+                            inputTokens     += usage.input      ?? 0
+                            outputTokens    += usage.output     ?? 0
+                            cacheReadTokens += usage.cacheRead  ?? 0
+                            cacheWriteTokens += usage.cacheWrite ?? 0
+                            totalCost       += usage.cost?.total ?? 0
+                        }
+                    }
+                }
+
+                let totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens
+
                 let sessionData = SessionData(
-                    cost: live.estimatedCostUsd ?? 0,
-                    inputTokens: live.inputTokens ?? 0,
-                    outputTokens: live.outputTokens ?? 0,
-                    totalTokens: live.totalTokens ?? 0,
-                    model: live.model ?? "claude-sonnet-4-6",
+                    cost: totalCost,
+                    inputTokens: inputTokens,
+                    outputTokens: outputTokens,
+                    cacheReadTokens: cacheReadTokens,
+                    totalTokens: totalTokens,
+                    model: model,
                     startedAt: startedAt,
-                    contextTokens: live.contextTokens ?? 200_000
+                    contextTokens: contextTokens
                 )
 
                 DispatchQueue.main.async {
@@ -188,9 +235,9 @@ final class CostModel: ObservableObject {
 
                     if entry.type == "message", entry.message?.role == "assistant" {
                         if let usage = entry.message?.usage {
-                            totalInput += usage.input ?? 0
+                            totalInput  += usage.input  ?? 0
                             totalOutput += usage.output ?? 0
-                            totalCost += usage.cost?.total ?? 0
+                            totalCost   += usage.cost?.total ?? 0
                         }
                     }
                 }

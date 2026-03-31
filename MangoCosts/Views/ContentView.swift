@@ -100,8 +100,15 @@ struct ContentView: View {
             costNumberSection(cost: data.cost)
                 .padding(.top, 8)
 
-            tokenRow(input: data.inputTokens, output: data.outputTokens)
-                .padding(.top, 6)
+            HStack(spacing: 14) {
+                TokenStat(direction: .up,    value: data.inputTokens,     label: "in")
+                TokenStat(direction: .down,  value: data.outputTokens,    label: "out")
+                if data.cacheReadTokens > 0 {
+                    TokenStat(direction: .cache, value: data.cacheReadTokens, label: "cache")
+                }
+                Spacer()
+            }
+            .padding(.top, 6)
 
             ContextWindowBar(totalTokens: data.totalTokens, maxTokens: data.contextTokens)
                 .padding(.top, 10)
@@ -187,7 +194,7 @@ struct ContentView: View {
 
 // MARK: - TokenStat
 
-enum TokenDirection { case up, down }
+enum TokenDirection { case up, down, cache }
 
 struct TokenStat: View {
     let direction: TokenDirection
@@ -196,7 +203,7 @@ struct TokenStat: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: direction == .up ? "arrow.up" : "arrow.down")
+            Image(systemName: direction == .up ? "arrow.up" : direction == .cache ? "arrow.clockwise" : "arrow.down")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(direction == .up ? Color(hex: "FF9500") : Color.secondary)
 

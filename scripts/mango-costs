@@ -98,11 +98,34 @@ print(f'  All-time Cost: \${all_cost:.4f}  (since {since})')
 print(f'  All-time Toks: {all_input:,} in / {all_output:,} out')
 "
     ;;
+  update)
+    SCRIPT_PATH="$(readlink -f "$0" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath('$0'))")"
+    PROJECT_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+    echo "🥭 Building MangoCosts..."
+    xcodebuild -project "$PROJECT_DIR/MangoCosts.xcodeproj" \
+      -scheme MangoCosts \
+      -configuration Debug \
+      build \
+      CODE_SIGN_IDENTITY="" \
+      CODE_SIGNING_REQUIRED=NO 2>&1 | grep -E "BUILD|error:|warning: Mango"
+
+    BUILD_APP=$(find ~/Library/Developer/Xcode/DerivedData/MangoCosts-*/Build/Products/Debug/MangoCosts.app -maxdepth 0 2>/dev/null | head -1)
+    if [ -z "$BUILD_APP" ]; then
+      echo "❌ Build failed or app not found"
+      exit 1
+    fi
+
+    echo "📦 Installing to /Applications..."
+    pkill -x MangoCosts 2>/dev/null; sleep 0.5
+    cp -R "$BUILD_APP" /Applications/MangoCosts.app
+    echo "✅ Done! Run: mango-costs show"
+    ;;
   *)
     echo "Usage: mango-costs <command>"
     echo ""
     echo "Commands:"
     echo "  show     Launch MangoCosts app"
     echo "  status   Print current usage to terminal"
+    echo "  update   Rebuild from source and reinstall to /Applications"
     ;;
 esac
