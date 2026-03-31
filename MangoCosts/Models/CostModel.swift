@@ -140,6 +140,7 @@ final class CostModel: ObservableObject {
                 var outputTokens: Int = 0
                 var cacheReadTokens: Int = 0
                 var cacheWriteTokens: Int = 0
+                var lastContextTokens: Int = 0
                 let decoder = JSONDecoder()
 
                 for line in lines {
@@ -154,11 +155,13 @@ final class CostModel: ObservableObject {
                             cacheReadTokens += usage.cacheRead  ?? 0
                             cacheWriteTokens += usage.cacheWrite ?? 0
                             totalCost       += usage.cost?.total ?? 0
+                            // Track last message context size (input prompt sent to model)
+                            lastContextTokens = (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0)
                         }
                     }
                 }
 
-                let totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens
+                let totalTokens = lastContextTokens
 
                 let sessionData = SessionData(
                     cost: totalCost,
@@ -181,8 +184,11 @@ final class CostModel: ObservableObject {
                     }
                 }
             } catch {
+                let msg = error.localizedDescription
+                let debug = "[\(Date())] loadSessionData error: \(msg)\nsessionsJson: \(self.sessionsJsonURL.path)\n"
+                try? debug.appendLine(to: URL(fileURLWithPath: "/tmp/mango-costs-debug.txt"))
                 DispatchQueue.main.async {
-                    self.loadError = error.localizedDescription
+                    self.loadError = msg
                 }
             }
         }
@@ -279,5 +285,20 @@ final class CostModel: ObservableObject {
         let m = (elapsed % 3600) / 60
         if h > 0 { return "\(h)h \(m)m" }
         return "\(m)m"
+    }
+}
+
+// MARK: - Debug helpers
+
+private extension String {
+    func appendLine(to url: URL) throws {
+        let line = self.hasSuffix("\n") ? self : self + "\n"
+        if let handle = FileHandle(forWritingAtPath: url.path) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            handle.closeFile()
+        } else {
+            try line.write(to: url, atomically: false, encoding: .utf8)
+        }
     }
 }

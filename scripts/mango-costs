@@ -99,7 +99,7 @@ print(f'  All-time Toks: {all_input:,} in / {all_output:,} out')
 "
     ;;
   update)
-    SCRIPT_PATH="$(readlink -f "$0" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath('$0'))")"
+    SCRIPT_PATH="$(python3 -c "import os; print(os.path.realpath('$0'))")"
     PROJECT_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
     echo "🥭 Building MangoCosts..."
     xcodebuild -project "$PROJECT_DIR/MangoCosts.xcodeproj" \
@@ -117,6 +117,7 @@ print(f'  All-time Toks: {all_input:,} in / {all_output:,} out')
 
     echo "📦 Installing to /Applications..."
     pkill -x MangoCosts 2>/dev/null; sleep 0.5
+    rm -rf /Applications/MangoCosts.app
     cp -R "$BUILD_APP" /Applications/MangoCosts.app
     echo "✅ Done! Run: mango-costs show"
     ;;

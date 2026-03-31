@@ -4,7 +4,6 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var costModel: CostModel
-    var onClose: (() -> Void)?
 
     @State private var selectedTab: Tab = .session
 
@@ -16,69 +15,25 @@ struct ContentView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                headerBand
-
-                Divider()
-                    .opacity(0.4)
-
                 tabPicker
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
 
-                if selectedTab == .session {
+                ZStack(alignment: .top) {
                     if let data = costModel.session {
                         sessionContent(data: data)
-                    } else {
-                        emptyState
+                            .opacity(selectedTab == .session ? 1 : 0)
                     }
-                } else {
                     if let data = costModel.total {
                         totalContent(data: data)
-                    } else {
-                        emptyState
+                            .opacity(selectedTab == .total ? 1 : 0)
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
+            .padding(.top, 28)
         }
-        .frame(width: 320, height: 260)
         .ignoresSafeArea()
-    }
-
-    // MARK: Header
-
-    private var headerBand: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Button(action: { onClose?() }) {
-                Circle()
-                    .fill(Color(hex: "FF5F57"))
-                    .frame(width: 12, height: 12)
-                    .overlay(
-                        Image(systemName: "xmark")
-                            .font(.system(size: 6, weight: .bold))
-                            .foregroundStyle(Color.black.opacity(0.5))
-                    )
-            }
-            .buttonStyle(.plain)
-            .padding(.leading, 12)
-
-            Text("🥭")
-                .font(.system(size: 22))
-
-            Text("Mango Costs")
-                .font(.system(.subheadline, design: .rounded).weight(.semibold))
-
-            Spacer()
-
-            if let data = costModel.session {
-                Text(shortModelName(data.model))
-                    .font(.system(size: 10, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .padding(.trailing, 12)
-            }
-        }
-        .frame(height: 40)
     }
 
     // MARK: Tab Picker
@@ -119,7 +74,6 @@ struct ContentView: View {
                 .padding(.top, 6)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 10)
     }
 
     // MARK: Total Tab
@@ -141,7 +95,6 @@ struct ContentView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 10)
     }
 
     // MARK: Shared sub-views
@@ -179,17 +132,6 @@ struct ContentView: View {
         .padding(.vertical, 20)
     }
 
-    // MARK: Helpers
-
-    private func shortModelName(_ full: String) -> String {
-        let s = full.lowercased()
-        for prefix in ["claude-", "anthropic/claude-"] {
-            if s.hasPrefix(prefix) {
-                return String(full.dropFirst(prefix.count))
-            }
-        }
-        return full
-    }
 }
 
 // MARK: - TokenStat
