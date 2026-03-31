@@ -16,12 +16,12 @@ struct MenuBarView: View {
 
             Divider()
 
-            if let data = costModel.costData {
+            if let data = costModel.session {
                 HStack {
                     Text("Cost")
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("$\(String(format: "%.4f", data.sessionCost))")
+                    Text("$\(String(format: "%.4f", data.cost))")
                         .monospacedDigit()
                         .fontWeight(.semibold)
                 }
@@ -41,7 +41,7 @@ struct MenuBarView: View {
                         .monospacedDigit()
                 }
             } else {
-                Text("No data — run mango-costs update")
+                Text("No data — waiting for session")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

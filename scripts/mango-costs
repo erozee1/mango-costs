@@ -2,7 +2,8 @@
 # mango-costs CLI companion
 # Usage: mango-costs [show|status]
 
-SESSION_FILE="$HOME/.openclaw/agents/main/sessions/d2afa572-efd6-4ca4-9c6e-42ddb9051b8c.jsonl"
+SESSIONS_JSON="$HOME/.openclaw/agents/main/sessions/sessions.json"
+SESSIONS_DIR="$HOME/.openclaw/agents/main/sessions"
 
 case "$1" in
   show|"")
@@ -15,61 +16,93 @@ case "$1" in
     fi
     ;;
   status)
-    if [ ! -f "$SESSION_FILE" ]; then
-      echo "❌ No session file found at $SESSION_FILE"
+    if [ ! -f "$SESSIONS_JSON" ]; then
+      echo "❌ No sessions.json found at $SESSIONS_JSON"
       exit 1
     fi
     echo "🥭 Mango Costs"
     echo "──────────────────────────"
     python3 -c "
-import json, sys
+import json, sys, os, glob
+from datetime import datetime, timezone
 
-session_file = '$SESSION_FILE'
-total_cost = 0.0
-total_input = 0
-total_output = 0
-model = 'claude-sonnet-4-6'
-session_start = None
-found_model = False
+sessions_json = os.path.expanduser('$SESSIONS_JSON')
+sessions_dir = os.path.expanduser('$SESSIONS_DIR')
 
-with open(session_file) as f:
-    for line in f:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if entry.get('type') != 'message':
-            continue
-        msg = entry.get('message', {})
-        if msg.get('role') != 'assistant':
-            continue
-        if session_start is None:
-            session_start = entry.get('timestamp')
-        if not found_model and msg.get('model'):
-            model = msg['model']
-            found_model = True
-        usage = msg.get('usage', {})
-        total_input += usage.get('input', 0)
-        total_output += usage.get('output', 0)
-        cost = usage.get('cost', {})
-        total_cost += cost.get('total', 0)
+# Current session from sessions.json
+with open(sessions_json) as f:
+    data = json.load(f)
 
-rag = '🟢' if total_cost < 0.10 else ('🟡' if total_cost < 0.50 else '🔴')
-print(f'  Cost:    {rag} \${total_cost:.4f}')
-print(f'  Input:   {total_input:,} tokens')
-print(f'  Output:  {total_output:,} tokens')
-print(f'  Model:   {model}')
-print(f'  Started: {session_start or \"unknown\"}')
+live = data.get('agent:main:main', {})
+cost = live.get('estimatedCostUsd', 0)
+inp  = live.get('inputTokens', 0)
+out  = live.get('outputTokens', 0)
+tot  = live.get('totalTokens', 0)
+ctx  = live.get('contextTokens', 1000000)
+model = live.get('model', 'unknown')
+started_ms = live.get('startedAt', 0)
+started = datetime.fromtimestamp(started_ms / 1000, tz=timezone.utc)
+now = datetime.now(tz=timezone.utc)
+elapsed = int((now - started).total_seconds())
+h, rem = divmod(elapsed, 3600)
+m = rem // 60
+duration = f'{h}h {m}m' if h > 0 else f'{m}m'
+
+rag = '🟢' if cost < 0.10 else ('🟡' if cost < 0.50 else '🔴')
+print(f'  Session Cost:  {rag} \${cost:.4f}')
+print(f'  Tokens:        {inp:,} in / {out:,} out')
+print(f'  Context:       {tot:,} / {ctx:,}')
+print(f'  Model:         {model}')
+print(f'  Duration:      {duration}')
+
+# All-time totals
+all_files = glob.glob(os.path.join(sessions_dir, '*.jsonl')) + \
+            glob.glob(os.path.join(sessions_dir, '*.jsonl.reset.*'))
+all_cost = 0.0
+all_input = 0
+all_output = 0
+oldest = None
+
+for path in all_files:
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except:
+                    continue
+                if entry.get('type') == 'session' and oldest is None:
+                    ts = entry.get('timestamp', '')
+                    try:
+                        d = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                        if oldest is None or d < oldest:
+                            oldest = d
+                    except:
+                        pass
+                if entry.get('type') == 'message':
+                    msg = entry.get('message', {})
+                    if msg.get('role') == 'assistant':
+                        usage = msg.get('usage', {})
+                        all_input += usage.get('input', 0)
+                        all_output += usage.get('output', 0)
+                        all_cost += (usage.get('cost') or {}).get('total', 0)
+    except:
+        pass
+
+since = oldest.strftime('%b %d') if oldest else 'unknown'
+print()
+print(f'  All-time Cost: \${all_cost:.4f}  (since {since})')
+print(f'  All-time Toks: {all_input:,} in / {all_output:,} out')
 "
     ;;
   *)
     echo "Usage: mango-costs <command>"
     echo ""
     echo "Commands:"
-    echo "  show     Bring MangoCosts app to front"
+    echo "  show     Launch MangoCosts app"
     echo "  status   Print current usage to terminal"
     ;;
 esac

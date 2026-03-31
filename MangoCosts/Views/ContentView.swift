@@ -1,14 +1,14 @@
 import SwiftUI
 
-// MARK: - Constants
-
-private let kMaxContextTokens = 200_000
-
 // MARK: - ContentView
 
 struct ContentView: View {
     @ObservedObject var costModel: CostModel
     var onClose: (() -> Void)?
+
+    @State private var selectedTab: Tab = .session
+
+    enum Tab { case session, total }
 
     var body: some View {
         ZStack {
@@ -21,22 +21,33 @@ struct ContentView: View {
                 Divider()
                     .opacity(0.4)
 
-                if let data = costModel.costData {
-                    bodyContent(data: data)
+                tabPicker
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+
+                if selectedTab == .session {
+                    if let data = costModel.session {
+                        sessionContent(data: data)
+                    } else {
+                        emptyState
+                    }
                 } else {
-                    emptyState
+                    if let data = costModel.total {
+                        totalContent(data: data)
+                    } else {
+                        emptyState
+                    }
                 }
             }
         }
-        .frame(width: 320, height: 236)
+        .frame(width: 320, height: 260)
         .ignoresSafeArea()
     }
 
-    // MARK: Header band — custom chrome, no system traffic lights
+    // MARK: Header
 
     private var headerBand: some View {
         HStack(alignment: .center, spacing: 8) {
-            // Close button (red circle)
             Button(action: { onClose?() }) {
                 Circle()
                     .fill(Color(hex: "FF5F57"))
@@ -50,7 +61,6 @@ struct ContentView: View {
             .buttonStyle(.plain)
             .padding(.leading, 12)
 
-            // Big mango emoji
             Text("🥭")
                 .font(.system(size: 22))
 
@@ -59,7 +69,7 @@ struct ContentView: View {
 
             Spacer()
 
-            if let data = costModel.costData {
+            if let data = costModel.session {
                 Text(shortModelName(data.model))
                     .font(.system(size: 10, weight: .regular))
                     .foregroundStyle(.secondary)
@@ -71,59 +81,82 @@ struct ContentView: View {
         .frame(height: 40)
     }
 
-    // MARK: Body
+    // MARK: Tab Picker
+
+    private var tabPicker: some View {
+        Picker("", selection: $selectedTab) {
+            Text("Session").tag(Tab.session)
+            Text("Total").tag(Tab.total)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+    }
+
+    // MARK: Session Tab
 
     @ViewBuilder
-    private func bodyContent(data: CostData) -> some View {
+    private func sessionContent(data: SessionData) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Cost — centre-stage
-            costSection(data: data)
+            costNumberSection(cost: data.cost)
+                .padding(.top, 8)
+
+            tokenRow(input: data.inputTokens, output: data.outputTokens)
+                .padding(.top, 6)
+
+            ContextWindowBar(totalTokens: data.totalTokens, maxTokens: data.contextTokens)
                 .padding(.top, 10)
 
-            // Token stats
-            tokenRow(data: data)
-                .padding(.top, 8)
-
-            // Context window bar
-            ContextWindowBar(totalTokens: data.inputTokens + data.outputTokens)
-                .padding(.top, 12)
-
-            // Session start — muted bottom line
-            sessionLine
-                .padding(.top, 8)
+            Text("Session: \(costModel.sessionDuration)")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 6)
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 10)
     }
 
-    private func costSection(data: CostData) -> some View {
-        HStack(alignment: .center, spacing: 8) {
-            Circle()
-                .fill(ragColor)
-                .frame(width: 10, height: 10)
+    // MARK: Total Tab
 
-            Text("$\(String(format: "%.3f", data.sessionCost))")
+    @ViewBuilder
+    private func totalContent(data: TotalData) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            costNumberSection(cost: data.cost)
+                .padding(.top, 8)
+
+            tokenRow(input: data.inputTokens, output: data.outputTokens)
+                .padding(.top, 6)
+
+            if let oldest = data.oldestSessionDate {
+                Text("Since \(oldest, format: .dateTime.month(.abbreviated).day())")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 6)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 10)
+    }
+
+    // MARK: Shared sub-views
+
+    private func costNumberSection(cost: Double) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text("$\(String(format: "%.3f", cost))")
                 .font(.system(size: 36, weight: .bold, design: .rounded))
                 .foregroundStyle(.primary)
                 .contentTransition(.numericText())
-                .animation(.easeInOut(duration: 0.3), value: data.sessionCost)
+                .animation(.easeInOut(duration: 0.3), value: cost)
 
             Spacer()
         }
     }
 
-    private func tokenRow(data: CostData) -> some View {
+    private func tokenRow(input: Int, output: Int) -> some View {
         HStack(spacing: 14) {
-            TokenStat(direction: .up,   value: data.inputTokens,  label: "in")
-            TokenStat(direction: .down, value: data.outputTokens, label: "out")
+            TokenStat(direction: .up,   value: input,  label: "in")
+            TokenStat(direction: .down, value: output, label: "out")
             Spacer()
         }
-    }
-
-    private var sessionLine: some View {
-        Text("Session: \(costModel.sessionDuration)")
-            .font(.system(size: 10))
-            .foregroundStyle(.tertiary)
     }
 
     private var emptyState: some View {
@@ -134,12 +167,6 @@ struct ContentView: View {
             Text(costModel.loadError == nil ? "Loading…" : "No data found")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            if costModel.loadError != nil {
-                Text("Run: mango-costs update --cost 0.00")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 20)
@@ -147,15 +174,6 @@ struct ContentView: View {
 
     // MARK: Helpers
 
-    private var ragColor: Color {
-        switch costModel.ragStatus {
-        case .green: return Color(hex: "34C759")
-        case .amber: return Color(hex: "FF9500")
-        case .red:   return Color(hex: "FF3B30")
-        }
-    }
-
-    /// Shorten e.g. "claude-sonnet-4-6-20251022" → "sonnet-4-6"
     private func shortModelName(_ full: String) -> String {
         let s = full.lowercased()
         for prefix in ["claude-", "anthropic/claude-"] {
@@ -203,13 +221,15 @@ struct TokenStat: View {
 
 struct ContextWindowBar: View {
     let totalTokens: Int
+    let maxTokens: Int
 
-    private static let softGreen = Color(red: 0.659, green: 0.835, blue: 0.635)  // #A8D5A2
-    private static let softAmber = Color(red: 1.000, green: 0.800, blue: 0.475)  // #FFCC79
-    private static let softRed   = Color(red: 1.000, green: 0.620, blue: 0.620)  // #FF9E9E
+    private static let softGreen = Color(red: 0.659, green: 0.835, blue: 0.635)
+    private static let softAmber = Color(red: 1.000, green: 0.800, blue: 0.475)
+    private static let softRed   = Color(red: 1.000, green: 0.620, blue: 0.620)
 
     private var fraction: Double {
-        min(Double(totalTokens) / Double(kMaxContextTokens), 1.0)
+        guard maxTokens > 0 else { return 0 }
+        return min(Double(totalTokens) / Double(maxTokens), 1.0)
     }
 
     private var barColor: Color {
@@ -224,13 +244,12 @@ struct ContextWindowBar: View {
         let fmt = NumberFormatter()
         fmt.numberStyle = .decimal
         let used = fmt.string(from: NSNumber(value: totalTokens)) ?? "\(totalTokens)"
-        let max  = fmt.string(from: NSNumber(value: kMaxContextTokens)) ?? "\(kMaxContextTokens)"
+        let max  = fmt.string(from: NSNumber(value: maxTokens)) ?? "\(maxTokens)"
         return "\(used) / \(max) tokens"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            // Label row
             HStack {
                 Text("Context Window")
                     .font(.system(size: 11, weight: .medium))
@@ -242,7 +261,6 @@ struct ContextWindowBar: View {
                     .foregroundStyle(.secondary)
             }
 
-            // Bar
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 3)
@@ -257,7 +275,6 @@ struct ContextWindowBar: View {
             }
             .frame(height: 7)
 
-            // Exact count
             Text(countText)
                 .font(.system(size: 10))
                 .monospacedDigit()
@@ -266,7 +283,7 @@ struct ContextWindowBar: View {
     }
 }
 
-// MARK: - VisualEffectView (NSVisualEffectView bridge)
+// MARK: - VisualEffectView
 
 struct VisualEffectView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
