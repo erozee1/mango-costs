@@ -86,7 +86,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 final class FloatingPanel: NSPanel, NSWindowDelegate {
     init(costModel: CostModel) {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 200),
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 225),
             styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
