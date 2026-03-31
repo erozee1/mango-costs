@@ -110,7 +110,7 @@ final class FloatingPanel: NSPanel, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        orderOut(nil)
+        NSApp.terminate(nil)
         return false
     }
 
