@@ -102,8 +102,8 @@ final class FloatingPanel: NSPanel {
 
 
 
-        let contentView = ContentView(costModel: costModel, onClose: { [weak self] in
-            self?.orderOut(nil)
+        let contentView = ContentView(costModel: costModel, onClose: {
+            NSApp.terminate(nil)
         })
         let hosting = NSHostingView(rootView: contentView)
         hosting.frame = self.contentView!.bounds
