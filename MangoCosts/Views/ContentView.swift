@@ -19,14 +19,20 @@ struct ContentView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
 
-                ZStack(alignment: .top) {
-                    if let data = costModel.session {
-                        sessionContent(data: data)
-                            .opacity(selectedTab == .session ? 1 : 0)
-                    }
-                    if let data = costModel.total {
-                        totalContent(data: data)
-                            .opacity(selectedTab == .total ? 1 : 0)
+                Group {
+                    switch selectedTab {
+                    case .session:
+                        if let data = costModel.session {
+                            sessionContent(data: data)
+                        } else {
+                            errorState
+                        }
+                    case .total:
+                        if let data = costModel.total {
+                            totalContent(data: data)
+                        } else {
+                            loadingState
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -119,12 +125,37 @@ struct ContentView: View {
         }
     }
 
-    private var emptyState: some View {
+    // MARK: Error / loading states
+
+    private var errorState: some View {
         VStack(spacing: 8) {
-            Image(systemName: costModel.loadError == nil ? "arrow.clockwise" : "exclamationmark.triangle")
+            Image(systemName: "exclamationmark.triangle")
                 .font(.title2)
                 .foregroundStyle(.orange)
-            Text(costModel.loadError == nil ? "Loading…" : "No data found")
+            Text(costModel.loadError ?? "No active session")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 8)
+            Button("Retry") {
+                costModel.loadSessionData()
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.blue)
+            .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 20)
+    }
+
+    private var loadingState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "arrow.clockwise")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text("Loading…")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
