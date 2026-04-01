@@ -75,6 +75,12 @@ struct TotalData: Equatable {
     let oldestSessionDate: Date?
 }
 
+struct TodayData: Equatable {
+    let cost: Double
+    let inputTokens: Int
+    let outputTokens: Int
+}
+
 // MARK: - CostModel
 
 final class CostModel: ObservableObject {
@@ -82,6 +88,7 @@ final class CostModel: ObservableObject {
     @Published var total: TotalData?
     @Published var lastUpdated: Date?
     @Published var loadError: String?
+    @Published var today: TodayData?
 
     static let notificationCheckpoints: [Double] = [0.10, 0.50, 1.00]
 
@@ -89,6 +96,7 @@ final class CostModel: ObservableObject {
     private let sessionsJsonURL: URL
     private var sessionTimer: Timer?
     private var totalTimer: Timer?
+    private var todayTimer: Timer?
 
     // Serial queue protects sessionAccum + file handle state across polls
     private let parseQueue = DispatchQueue(label: "com.mangocosts.parse", qos: .utility)
@@ -112,6 +120,7 @@ final class CostModel: ObservableObject {
         sessionsJsonURL = sessionsDir.appendingPathComponent("sessions.json")
         loadSessionData()
         loadTotalData()
+        loadTodayData()
         startPolling()
     }
 
@@ -288,6 +297,67 @@ final class CostModel: ObservableObject {
         }
     }
 
+    // MARK: - Today loading (sessions started today)
+
+    func loadTodayData() {
+        DispatchQueue.global(qos: .background).async { [weak self] in
+            guard let self else { return }
+
+            var allFiles: [URL] = []
+            let fm = FileManager.default
+
+            if let contents = try? fm.contentsOfDirectory(at: self.sessionsDir, includingPropertiesForKeys: nil) {
+                for url in contents {
+                    let name = url.lastPathComponent
+                    if name.hasSuffix(".jsonl") || name.contains(".jsonl.reset.") {
+                        allFiles.append(url)
+                    }
+                }
+            }
+
+            var totalCost: Double = 0
+            var totalInput: Int = 0
+            var totalOutput: Int = 0
+            let decoder = JSONDecoder()
+            let isoFmt = ISO8601DateFormatter()
+            isoFmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+            for fileURL in allFiles {
+                guard let raw = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+                let lines = raw.components(separatedBy: "\n")
+                    .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+
+                var isToday = false
+                var checkedSession = false
+
+                for line in lines {
+                    guard let lineData = line.data(using: .utf8),
+                          let entry = try? decoder.decode(JournalEntry.self, from: lineData)
+                    else { continue }
+
+                    if !checkedSession, entry.type == "session", let ts = entry.timestamp {
+                        if let date = isoFmt.date(from: ts) {
+                            isToday = Calendar.current.isDateInToday(date)
+                        }
+                        checkedSession = true
+                        if !isToday { break }
+                    }
+
+                    if isToday, entry.type == "message", entry.message?.role == "assistant" {
+                        if let usage = entry.message?.usage {
+                            totalInput  += usage.input  ?? 0
+                            totalOutput += usage.output ?? 0
+                            totalCost   += usage.cost?.total ?? 0
+                        }
+                    }
+                }
+            }
+
+            let todayData = TodayData(cost: totalCost, inputTokens: totalInput, outputTokens: totalOutput)
+            DispatchQueue.main.async { self.today = todayData }
+        }
+    }
+
     // MARK: - Polling
 
     private func startPolling() {
@@ -300,6 +370,11 @@ final class CostModel: ObservableObject {
             self?.loadTotalData()
         }
         RunLoop.main.add(totalTimer!, forMode: .common)
+
+        todayTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.loadTodayData()
+        }
+        RunLoop.main.add(todayTimer!, forMode: .common)
     }
 
     // MARK: - Computed helpers

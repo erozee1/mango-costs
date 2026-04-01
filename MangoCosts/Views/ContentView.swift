@@ -7,7 +7,7 @@ struct ContentView: View {
 
     @State private var selectedTab: Tab = .session
 
-    enum Tab { case session, total }
+    enum Tab { case session, today, total }
 
     var body: some View {
         ZStack {
@@ -26,6 +26,12 @@ struct ContentView: View {
                             sessionContent(data: data)
                         } else {
                             errorState
+                        }
+                    case .today:
+                        if let data = costModel.today {
+                            todayContent(data: data)
+                        } else {
+                            loadingState
                         }
                     case .total:
                         if let data = costModel.total {
@@ -47,6 +53,7 @@ struct ContentView: View {
     private var tabPicker: some View {
         Picker("", selection: $selectedTab) {
             Text("Session").tag(Tab.session)
+            Text("Today").tag(Tab.today)
             Text("Total").tag(Tab.total)
         }
         .pickerStyle(.segmented)
@@ -75,6 +82,25 @@ struct ContentView: View {
                 .padding(.top, 10)
 
             Text("Session: \(costModel.sessionDuration)")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 6)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: Today Tab
+
+    @ViewBuilder
+    private func todayContent(data: TodayData) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            costNumberSection(cost: data.cost)
+                .padding(.top, 8)
+
+            tokenRow(input: data.inputTokens, output: data.outputTokens)
+                .padding(.top, 6)
+
+            Text("Today")
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
                 .padding(.top, 6)
