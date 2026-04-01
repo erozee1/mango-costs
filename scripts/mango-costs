@@ -55,44 +55,65 @@ print(f'  Context:       {tot:,} / {ctx:,}')
 print(f'  Model:         {model}')
 print(f'  Duration:      {duration}')
 
-# All-time totals
+# Scan all JSONL files: accumulate today + all-time in one pass
+from datetime import date as dateobj
+
 all_files = glob.glob(os.path.join(sessions_dir, '*.jsonl')) + \
             glob.glob(os.path.join(sessions_dir, '*.jsonl.reset.*'))
 all_cost = 0.0
 all_input = 0
 all_output = 0
 oldest = None
+today_cost = 0.0
+today_input = 0
+today_output = 0
+local_today = dateobj.today()
 
 for path in all_files:
     try:
         with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
+            lines = f.readlines()
+        is_today = False
+        checked_session = False
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except:
+                continue
+            if not checked_session and entry.get('type') == 'session':
+                ts = entry.get('timestamp', '')
                 try:
-                    entry = json.loads(line)
+                    d = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                    is_today = d.astimezone().date() == local_today
+                    if oldest is None or d < oldest:
+                        oldest = d
                 except:
-                    continue
-                if entry.get('type') == 'session' and oldest is None:
-                    ts = entry.get('timestamp', '')
-                    try:
-                        d = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-                        if oldest is None or d < oldest:
-                            oldest = d
-                    except:
-                        pass
-                if entry.get('type') == 'message':
-                    msg = entry.get('message', {})
-                    if msg.get('role') == 'assistant':
-                        usage = msg.get('usage', {})
-                        all_input += usage.get('input', 0)
-                        all_output += usage.get('output', 0)
-                        all_cost += (usage.get('cost') or {}).get('total', 0)
+                    pass
+                checked_session = True
+            if entry.get('type') == 'message':
+                msg = entry.get('message', {})
+                if msg.get('role') == 'assistant':
+                    usage = msg.get('usage', {})
+                    inp = usage.get('input', 0)
+                    out = usage.get('output', 0)
+                    cost = (usage.get('cost') or {}).get('total', 0)
+                    all_input += inp
+                    all_output += out
+                    all_cost += cost
+                    if is_today:
+                        today_input += inp
+                        today_output += out
+                        today_cost += cost
     except:
         pass
 
 since = oldest.strftime('%b %d') if oldest else 'unknown'
+print()
+print(f'  Today Cost:    \${today_cost:.4f}')
+print(f'  Today Tokens:  {today_input:,} in / {today_output:,} out')
 print()
 print(f'  All-time Cost: \${all_cost:.4f}  (since {since})')
 print(f'  All-time Toks: {all_input:,} in / {all_output:,} out')
