@@ -90,6 +90,22 @@ final class CostModel: ObservableObject {
     private var sessionTimer: Timer?
     private var totalTimer: Timer?
 
+    // Serial queue protects sessionAccum + file handle state across polls
+    private let parseQueue = DispatchQueue(label: "com.mangocosts.parse", qos: .utility)
+    private var sessionFileURL: URL?
+    private var sessionFileHandle: FileHandle?
+    private var sessionFileOffset: UInt64 = 0
+    private var sessionAccum = SessionAccumulator()
+
+    private struct SessionAccumulator {
+        var cost: Double = 0
+        var inputTokens: Int = 0
+        var outputTokens: Int = 0
+        var cacheReadTokens: Int = 0
+        var cacheWriteTokens: Int = 0
+        var lastContextTokens: Int = 0
+    }
+
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
         sessionsDir = home.appendingPathComponent(".openclaw/agents/main/sessions")
@@ -102,7 +118,7 @@ final class CostModel: ObservableObject {
     // MARK: - Session loading (sessions.json metadata + JSONL token counts)
 
     func loadSessionData() {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
+        parseQueue.async { [weak self] in
             guard let self else { return }
             do {
                 // Step 1: read sessions.json for metadata
@@ -129,46 +145,56 @@ final class CostModel: ObservableObject {
                                   userInfo: [NSLocalizedDescriptionKey: "No sessionFile in sessions.json"])
                 }
 
-                // Step 2: parse JSONL for accurate token/cost data
+                // Step 2: incremental JSONL parse — only read bytes added since last poll
                 let jsonlURL = URL(fileURLWithPath: sessionFilePath)
-                let jsonlRaw = try String(contentsOf: jsonlURL, encoding: .utf8)
-                let lines = jsonlRaw.components(separatedBy: "\n")
-                    .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
 
-                var totalCost: Double = 0
-                var inputTokens: Int = 0
-                var outputTokens: Int = 0
-                var cacheReadTokens: Int = 0
-                var cacheWriteTokens: Int = 0
-                var lastContextTokens: Int = 0
-                let decoder = JSONDecoder()
+                if self.sessionFileURL != jsonlURL {
+                    // Session changed — close old handle, reset accumulator, start fresh
+                    self.sessionFileHandle?.closeFile()
+                    self.sessionFileHandle = FileHandle(forReadingAtPath: jsonlURL.path)
+                    self.sessionFileOffset = 0
+                    self.sessionAccum = SessionAccumulator()
+                    self.sessionFileURL = jsonlURL
+                }
 
-                for line in lines {
-                    guard let lineData = line.data(using: .utf8),
-                          let entry = try? decoder.decode(JournalEntry.self, from: lineData)
-                    else { continue }
+                guard let handle = self.sessionFileHandle else {
+                    throw NSError(domain: "MangoCosts", code: 3,
+                                  userInfo: [NSLocalizedDescriptionKey: "Cannot open session file: \(jsonlURL.lastPathComponent)"])
+                }
 
-                    if entry.type == "message", entry.message?.role == "assistant" {
-                        if let usage = entry.message?.usage {
-                            inputTokens     += usage.input      ?? 0
-                            outputTokens    += usage.output     ?? 0
-                            cacheReadTokens += usage.cacheRead  ?? 0
-                            cacheWriteTokens += usage.cacheWrite ?? 0
-                            totalCost       += usage.cost?.total ?? 0
-                            // Track last message context size (input prompt sent to model)
-                            lastContextTokens = (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0)
+                handle.seek(toFileOffset: self.sessionFileOffset)
+                let newData = handle.readDataToEndOfFile()
+                self.sessionFileOffset = handle.offsetInFile
+
+                if !newData.isEmpty, let newText = String(data: newData, encoding: .utf8) {
+                    let lines = newText.components(separatedBy: "\n")
+                        .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                    let decoder = JSONDecoder()
+
+                    for line in lines {
+                        guard let lineData = line.data(using: .utf8),
+                              let entry = try? decoder.decode(JournalEntry.self, from: lineData)
+                        else { continue }
+
+                        if entry.type == "message", entry.message?.role == "assistant" {
+                            if let usage = entry.message?.usage {
+                                self.sessionAccum.inputTokens      += usage.input      ?? 0
+                                self.sessionAccum.outputTokens     += usage.output     ?? 0
+                                self.sessionAccum.cacheReadTokens  += usage.cacheRead  ?? 0
+                                self.sessionAccum.cacheWriteTokens += usage.cacheWrite ?? 0
+                                self.sessionAccum.cost             += usage.cost?.total ?? 0
+                                self.sessionAccum.lastContextTokens = (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0)
+                            }
                         }
                     }
                 }
 
-                let totalTokens = lastContextTokens
-
                 let sessionData = SessionData(
-                    cost: totalCost,
-                    inputTokens: inputTokens,
-                    outputTokens: outputTokens,
-                    cacheReadTokens: cacheReadTokens,
-                    totalTokens: totalTokens,
+                    cost: self.sessionAccum.cost,
+                    inputTokens: self.sessionAccum.inputTokens,
+                    outputTokens: self.sessionAccum.outputTokens,
+                    cacheReadTokens: self.sessionAccum.cacheReadTokens,
+                    totalTokens: self.sessionAccum.lastContextTokens,
                     model: model,
                     startedAt: startedAt,
                     contextTokens: contextTokens
